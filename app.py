@@ -1,9 +1,3 @@
-# (app.py 중간의 requests.get 부분을 이렇게 수정해 보세요)
-with st.spinner("국토부 서버 대답을 기다리는 중 (최대 20초)..."):
-    try:
-        # 타임아웃을 20초로 대폭 늘렸습니다.
-        res_bld = requests.get(bld_url, params=params, timeout=20)
-        # ... 이하 동일
 import streamlit as st
 import requests
 
@@ -51,9 +45,7 @@ if st.session_state.run_test:
                     pnu_code = f"{b_code}{mountain_yn}{main_no}{sub_no}"
                     st.success(f"✅ **생성된 PNU:** {pnu_code}")
                     
-                    # 2단계 시작
                     st.subheader("2단계: 공공데이터 API (건축물대장 정보 조회)")
-                    # URL을 https로 변경하고 타임아웃을 늘렸습니다.
                     bld_url = "https://apis.data.go.kr/1613000/BldRgstHubService/getBrTitInfo"
                     
                     params = {
@@ -68,10 +60,10 @@ if st.session_state.run_test:
                         "_type": "json"                
                     }
                     
-                    with st.spinner("국토교통부 서버 대답을 기다리는 중 (최대 10초)..."):
+                    # 💡 국토부 서버를 20초 동안 기다려주는 핵심 로직입니다.
+                    with st.spinner("국토교통부 서버 대답을 기다리는 중 (최대 20초)..."):
                         try:
-                            # timeout=10을 추가하여 서버가 느려도 기다려줍니다.
-                            res_bld = requests.get(bld_url, params=params, timeout=10)
+                            res_bld = requests.get(bld_url, params=params, timeout=20)
                             
                             if res_bld.status_code == 200:
                                 bld_data = res_bld.json()
@@ -93,7 +85,7 @@ if st.session_state.run_test:
                             else:
                                 st.error(f"공공데이터 서버 응답 오류: {res_bld.status_code}")
                         except requests.exceptions.Timeout:
-                            st.error("⌛ 국토부 서버가 너무 느려 응답 시간을 초과했습니다. 잠시 후 다시 시도해 주세요.")
+                            st.error("⌛ 국토부 서버가 너무 느려 20초가 지나버렸습니다. 잠시 후 다시 눌러주세요.")
                         except Exception as e:
                             st.error(f"데이터 조회 중 오류: {e}")
                 else:
