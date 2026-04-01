@@ -34,7 +34,14 @@ if st.session_state.run_test:
         
         with st.spinner("카카오에서 주소를 분석 중입니다..."):
             res_kakao = requests.get(kakao_url, headers=headers, params={"query": address_input})
-            
+                    with st.spinner("카카오에서 주소를 분석 중입니다..."):
+            res_kakao = requests.get(kakao_url, headers=headers, params={"query": address_input})
+        
+        # 🚨 [추가] 카카오 서버의 실제 대답을 확인하는 디버깅용 박스
+        with st.expander("🛠️ 시스템 응답 상세보기 (에러 추적용)"):
+            st.write(f"상태 코드: {res_kakao.status_code}")
+            st.json(res_kakao.json())
+
         if res_kakao.status_code == 200 and res_kakao.json()['documents']:
             doc = res_kakao.json()['documents'][0]
             address_info = doc.get('address', {})
