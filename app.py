@@ -4,7 +4,6 @@ with st.spinner("국토부 서버 대답을 기다리는 중 (최대 20초)...")
         # 타임아웃을 20초로 대폭 늘렸습니다.
         res_bld = requests.get(bld_url, params=params, timeout=20)
         # ... 이하 동일
-
 import streamlit as st
 import requests
 
