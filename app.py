@@ -1,96 +1,109 @@
 import streamlit as st
 import requests
+from requests.utils import unquote
 
-st.set_page_config(page_title="대지분석 엔진 테스트", page_icon="🏢", layout="centered")
+st.set_page_config(page_title="대지분석 엔진 Pro", page_icon="⚖️", layout="centered")
 
-st.title("🏢 대통합 엔진: 주소 하나로 건물 정보까지!")
-st.markdown("카카오 API로 **PNU**를 추출하고, 이를 공공데이터에 넘겨 **건축물대장**을 조회합니다.")
+st.title("⚖️ 대지분석 통합 엔진: 현황 및 법규")
+st.markdown("주소 하나로 **PNU 추출 ➡️ 건축물대장 ➡️ 토지이용계획**을 한 번에 분석합니다.")
 
-if 'run_test' not in st.session_state:
-    st.session_state.run_test = False
-
-address_input = st.text_input("🔍 대상지 주소 (예: 서울 중구 정동길 33)", value="서울 중구 정동길 33")
+address_input = st.text_input("🔍 분석 대상지 주소", value="서울 중구 정동길 33")
 kakao_key = st.text_input("🔑 카카오 REST API 키", type="password")
 
-# 건축물대장 API 키
-BLD_API_KEY = "87443571551d327893c30af0d677644f98b96ca2e1186b65f6546848a1efb7f8"
+# 공공데이터 인증키 (필립 님 키)
+# 🚨 중요: requests가 키를 이중 인코딩하지 않도록 unquote 처리합니다.
+raw_key = "87443571551d327893c30af0d677644f98b96ca2e1186b65f6546848a1efb7f8"
+DATA_GO_KEY = unquote(raw_key)
 
-if st.button("마법의 데이터 추출 시작 🚀"):
-    st.session_state.run_test = True
-
-if st.session_state.run_test:
+if st.button("통합 데이터 분석 시작 🚀"):
     if not kakao_key:
-        st.warning("카카오 REST API 키를 입력해 주세요!")
+        st.warning("카카오 키를 입력해 주세요.")
     else:
-        st.write("---")
-        st.subheader("1단계: 카카오 API (주소 ➡️ PNU 변환)")
-        
+        # 1. 카카오 API: PNU 추출
         kakao_url = "https://dapi.kakao.com/v2/local/search/address.json"
         headers = {"Authorization": f"KakaoAK {kakao_key}"}
+        res_kakao = requests.get(kakao_url, headers=headers, params={"query": address_input})
         
-        try:
-            res_kakao = requests.get(kakao_url, headers=headers, params={"query": address_input}, timeout=5)
+        if res_kakao.status_code == 200 and res_kakao.json().get('documents'):
+            doc = res_kakao.json()['documents'][0]
+            addr = doc.get('address', {})
+            b_code = addr.get('b_code', '')
+            mnt = '2' if addr.get('mountain_yn') == 'Y' else '1'
+            main_no = str(addr.get('main_address_no', '')).zfill(4)
+            sub_no = str(addr.get('sub_address_no', '')).zfill(4)
+            pnu = f"{b_code}{mnt}{main_no}{sub_no}"
             
-            if res_kakao.status_code == 200 and res_kakao.json().get('documents'):
-                doc = res_kakao.json()['documents'][0]
-                address_info = doc.get('address', {})
-                
-                if address_info:
-                    b_code = address_info.get('b_code', '')
-                    mountain_yn = '2' if address_info.get('mountain_yn') == 'Y' else '1' 
-                    plat_gb_cd = '0' if mountain_yn == '1' else '1' 
-                    main_no = str(address_info.get('main_address_no', '')).zfill(4)
-                    sub_no = str(address_info.get('sub_address_no', '')).zfill(4)
-                    
-                    pnu_code = f"{b_code}{mountain_yn}{main_no}{sub_no}"
-                    st.success(f"✅ **생성된 PNU:** {pnu_code}")
-                    
-                    st.subheader("2단계: 공공데이터 API (건축물대장 정보 조회)")
-                    bld_url = "https://apis.data.go.kr/1613000/BldRgstHubService/getBrTitInfo"
-                    
-                    params = {
-                        "serviceKey": BLD_API_KEY,
-                        "sigunguCd": b_code[:5],       
-                        "bjdongCd": b_code[5:10],      
-                        "platGbCd": plat_gb_cd,        
-                        "bun": main_no,                
-                        "ji": sub_no,                  
-                        "numOfRows": "10",
-                        "pageNo": "1",
-                        "_type": "json"                
-                    }
-                    
-                    # 💡 국토부 서버를 20초 동안 기다려주는 핵심 로직입니다.
-                    with st.spinner("국토교통부 서버 대답을 기다리는 중 (최대 20초)..."):
-                        try:
-                            res_bld = requests.get(bld_url, params=params, timeout=20)
-                            
-                            if res_bld.status_code == 200:
-                                bld_data = res_bld.json()
-                                items = bld_data.get('response', {}).get('body', {}).get('items', {}).get('item', [])
-                                
-                                if items:
-                                    if isinstance(items, dict): items = [items]
-                                    info = items[0]
-                                    st.success("✅ **건축물대장 조회 성공!**")
-                                    col1, col2 = st.columns(2)
-                                    with col1:
-                                        st.info(f"🏗️ **주구조:** {info.get('strctCdNm', '정보없음')}\n"
-                                                f"🏢 **주용도:** {info.get('mainPurpsCdNm', '정보없음')}")
-                                    with col2:
-                                        st.success(f"층수: 지하 {info.get('ugrndFlrCnt', 0)}층 / 지상 {info.get('grndFlrCnt', 0)}층\n"
-                                                   f"면적: 대지 {info.get('platArea', 0)}㎡ / 연면적 {info.get('totArea', 0)}㎡")
-                                else:
-                                    st.warning("대장 정보가 없습니다. 지번을 확인하거나 서버 점검 중일 수 있습니다.")
-                            else:
-                                st.error(f"공공데이터 서버 응답 오류: {res_bld.status_code}")
-                        except requests.exceptions.Timeout:
-                            st.error("⌛ 국토부 서버가 너무 느려 20초가 지나버렸습니다. 잠시 후 다시 눌러주세요.")
-                        except Exception as e:
-                            st.error(f"데이터 조회 중 오류: {e}")
+            st.success(f"✅ 대상지 PNU: {pnu}")
+            st.write("---")
+
+            # 2. 건축물대장 API (현황)
+            st.subheader("🏢 1. 건축물 현황 (건축물대장)")
+            # 404 방지를 위해 http와 직접 URL 구성을 사용합니다.
+            bld_url = "http://apis.data.go.kr/1613000/BldRgstHubService/getBrTitInfo"
+            bld_params = {
+                "serviceKey": DATA_GO_KEY,
+                "sigunguCd": b_code[:5],
+                "bjdongCd": b_code[5:10],
+                "platGbCd": '0' if mnt=='1' else '1',
+                "bun": main_no,
+                "ji": sub_no,
+                "_type": "json"
+            }
+            
+            try:
+                res_bld = requests.get(bld_url, params=bld_params, timeout=15)
+                if res_bld.status_code == 200:
+                    bld_items = res_bld.json().get('response', {}).get('body', {}).get('items', {}).get('item', [])
+                    if bld_items:
+                        info = bld_items[0] if isinstance(bld_items, list) else bld_items
+                        c1, c2 = st.columns(2)
+                        c1.metric("주용도", info.get('mainPurpsCdNm', '정보없음'))
+                        c2.metric("주구조", info.get('strctCdNm', '정보없음'))
+                        st.write(f"**규모:** 지상 {info.get('grndFlrCnt', 0)}층 / 지하 {info.get('ugrndFlrCnt', 0)}층")
+                        st.write(f"**면적:** 대지 {info.get('platArea', 0)}㎡ / 연면적 {info.get('totArea', 0)}㎡")
+                    else:
+                        st.info("건축물대장 정보가 없는 나대지이거나 문화재 건축물일 수 있습니다.")
                 else:
-                    st.error("PNU를 생성할 수 없는 주소입니다.")
-            else:
-                st.error("주소 검색 실패. 카카오 설정을 확인하세요.")
-        except Exception as e:
-            st.error(f"카카오 통신 오류: {e}")
+                    st.error(f"건축물대장 서버 응답 오류: {res_bld.status_code}")
+            except:
+                st.error("건축물대장 서버 연결 실패")
+
+            # 3. 토지이용계획 API (법규)
+            st.write("---")
+            st.subheader("⚖️ 2. 토지 이용 및 법규 규제")
+            
+            # 토지이용계획정보 서비스 (속성조회)
+            land_url = "http://apis.data.go.kr/1613000/LndUtilInfoService/getLandUseAttr"
+            land_params = {
+                "serviceKey": DATA_GO_KEY,
+                "pnu": pnu,
+                "numOfRows": "30",
+                "pageNo": "1",
+                "_type": "json"
+            }
+            
+            try:
+                res_land = requests.get(land_url, params=land_params, timeout=15)
+                if res_land.status_code == 200:
+                    land_data = res_land.json().get('response', {}).get('body', {}).get('items', {}).get('item', [])
+                    if land_data:
+                        if isinstance(land_data, dict): land_data = [land_data]
+                        rules = list(set([item.get('lndUseCharNm') for item in land_data if item.get('lndUseCharNm')]))
+                        
+                        st.warning("⚠️ **주요 토지이용 규제사항**")
+                        for rule in rules:
+                            st.write(f"• {rule}")
+                        
+                        # 건축가 필터링 (중요 키워드 강조)
+                        critical = [r for r in rules if any(k in r for k in ["상업", "주거", "문화재", "구역", "지구"])]
+                        if critical:
+                            st.info(f"💡 **설계 시 핵심 참고:** {', '.join(critical)}")
+                    else:
+                        st.info("조회된 법규 제한 사항이 없습니다.")
+                else:
+                    st.error(f"토지이용 API 응답 오류: {res_land.status_code}")
+            except:
+                st.error("법규 분석 서버 연결 실패")
+                    
+        else:
+            st.error("주소 분석 실패. 정확한 지번 주소를 입력해 주세요.")
